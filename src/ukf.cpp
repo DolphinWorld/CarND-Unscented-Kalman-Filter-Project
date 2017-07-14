@@ -23,13 +23,21 @@ UKF::UKF() {
   // initial state vector
   x_ = VectorXd(n_x_);
 
+  H_ = MatrixXd(2, 5);
+  H_ << 1, 0, 0, 0, 0,
+        0, 1, 0, 0, 0;
+
+  R_ = MatrixXd(2, 2);
+  R_ << 0.0225, 0,
+        0, 0.0225;
+
   // initial covariance matrix
   P_ = MatrixXd(n_x_, n_x_);
-  P_ << 1000, 0, 0, 0, 0,
-       0, 1000, 0, 0, 0,
-       0, 0, 1000, 0, 0,
-       0, 0, 0, 7, 0,
-       0, 0, 0, 0, 7;
+  P_ << 1, 0, 0, 0, 0,
+       0, 1, 0, 0, 0,
+       0, 0, 1, 0, 0,
+       0, 0, 0, 1, 0,
+       0, 0, 0, 0, 1;
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
   std_a_ = 3;
@@ -75,8 +83,6 @@ UKF::UKF() {
   }
  
   is_initialized_ = false;
-
-  
 }
 
 UKF::~UKF() {}
@@ -93,13 +99,15 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 	return;
    }
    double dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0;
+   previous_timestamp_ = meas_package.timestamp_;
 
    Prediction(dt); 
 
-   if ( meas_package.sensor_type_ == MeasurementPackage::RADAR) {   
+   if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {   
       UpdateRadar(meas_package);
+   } else if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
+      UpdateLidar(meas_package);
    }
-  
 }
 
 void UKF::initValues(MeasurementPackage meas_package) {
@@ -211,12 +219,8 @@ void UKF::Prediction(double delta_t) {
     Xsig_pred_(3,i) = yaw_p;
     Xsig_pred_(4,i) = yawd_p;
   }
-
-
-  //  Predict Mean and convariance
-  
-
-  //predicted state mean
+  // Predict Mean and convariance
+  // predicted state mean
   x_.fill(0.0);
   //predicted state mean
   for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //iterate over sigma points
@@ -255,6 +259,22 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
 
   You'll also need to calculate the lidar NIS.
   */
+
+  VectorXd z = meas_package.raw_measurements_;
+  VectorXd hx = H_ * x_;
+
+  VectorXd y = z - H_ * x_;
+  MatrixXd Ht = H_.transpose();
+  MatrixXd S = H_ * P_ * Ht + R_;
+  MatrixXd Si = S.inverse();
+  MatrixXd PHt = P_ * Ht;
+  MatrixXd K = PHt * Si;
+
+  x_ = x_ + (K * y);
+  long x_size = x_.size();
+
+  MatrixXd I = MatrixXd::Identity(x_size, x_size);
+  P_ = (I - K * H_) * P_;
 }
 
 /**
@@ -290,7 +310,7 @@ void UKF::RadarUpdateState(VectorXd z_pred, MatrixXd S, VectorXd  z, MatrixXd Zs
     //residual
     VectorXd z_diff = Zsig.col(i) - z_pred;
     //angle normalization
-    while (z_diff(1)> M_PI) {
+    while (z_diff(1) > M_PI) {
 	cout << "zdiff" << z_diff(1) << endl;
 	z_diff(1)-=2.*M_PI;
     }

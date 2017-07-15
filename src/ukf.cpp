@@ -40,10 +40,10 @@ UKF::UKF() {
        0, 0, 0, 0, 1;
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 3;
+  std_a_ = 1;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 3;
+  std_yawdd_ = 1;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -101,7 +101,15 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
    double dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0;
    previous_timestamp_ = meas_package.timestamp_;
 
-   Prediction(dt); 
+   double step = 0.1; 
+
+   if (dt >= step * 2) { 
+      while (dt >= step * 2) {
+         Prediction(step);
+         dt -= step;
+      }
+   }
+   Prediction(dt);
 
    if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {   
       UpdateRadar(meas_package);
@@ -121,8 +129,8 @@ void UKF::initValues(MeasurementPackage meas_package) {
 
     float px = rho * cos(phi);
     float py = rho * sin(phi);
-    float vx = rhodot * cos(phi);
-    float vy = rhodot * sin(phi);
+    float vx = rhodot * cos(0);
+    float vy = rhodot * sin(0);
 
     x_ << px, py, sqrt(vx * vx + vy * vy), 0, 0;
   }
@@ -380,9 +388,20 @@ void UKF::PredictRadarMeasurement(VectorXd* z_out, MatrixXd* S_out, MatrixXd *Zs
     double v2 = sin(yaw)*v;
 
     // measurement model
+    double MAX = 99999;
     Zsig(0,i) = sqrt(p_x*p_x + p_y*p_y);                        //r
-    Zsig(1,i) = atan2(p_y,p_x);                                 //phi
-    Zsig(2,i) = (p_x*v1 + p_y*v2 ) / sqrt(p_x*p_x + p_y*p_y);   //r_dot
+  
+    if (p_x == 0) {
+        Zsig(1,i) = MAX;
+    } else {
+        Zsig(1,i) = atan2(p_y,p_x);                                 //phi
+    }
+
+    if (p_x == 0 && p_y == 0) {
+	Zsig(2, i) = MAX;
+    } else {
+    	Zsig(2,i) = (p_x*v1 + p_y*v2 ) / sqrt(p_x*p_x + p_y*p_y);   //r_dot
+    }
   }
 
   VectorXd z_pred = VectorXd(n_z_);
